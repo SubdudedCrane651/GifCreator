@@ -24,35 +24,52 @@ FONT_NAME_MAP = {
     "courier new": "cour.ttf",
 }
 
+import glob
+from PIL import ImageFont
+
+FONT_CACHE = {}
+
+def build_font_cache():
+    """Scan ALL Windows font directories and map real font names to file paths."""
+    global FONT_CACHE
+    FONT_CACHE = {}
+
+    font_dirs = [
+        "C:/Windows/Fonts/*.ttf",
+        "C:/Windows/Fonts/*.otf",
+        os.path.expanduser("~/AppData/Local/Microsoft/Windows/Fonts/*.ttf"),
+        os.path.expanduser("~/AppData/Local/Microsoft/Windows/Fonts/*.otf"),
+        os.path.expanduser("~/AppData/Local/Fonts/*.ttf"),
+        os.path.expanduser("~/AppData/Local/Fonts/*.otf"),
+    ]
+
+    for pattern in font_dirs:
+        for path in glob.glob(pattern):
+            try:
+                font_obj = ImageFont.truetype(path, 20)
+                name = font_obj.getname()[0].lower().strip()
+                FONT_CACHE[name] = path
+            except Exception:
+                pass
+
 
 def get_font_path(font_name):
-    """Map Tkinter font names to real Windows font files."""
-    win_font_dir = pathlib.Path("C:/Windows/Fonts")
-    name_key = font_name.strip().lower()
+    """Return best matching font file for a Tkinter font name."""
+    if not FONT_CACHE:
+        build_font_cache()
 
-    # Manual map first
-    if name_key in FONT_NAME_MAP:
-        p = win_font_dir / FONT_NAME_MAP[name_key]
-        if p.exists():
-            return str(p)
+    key = font_name.lower().strip()
 
-    # Generic guesses
-    candidates = [
-        f"{font_name}.ttf",
-        f"{font_name}.otf",
-        f"{name_key}.ttf",
-        f"{name_key}.otf",
-        f"{name_key.replace(' ', '')}.ttf",
-        f"{name_key.replace(' ', '')}.otf",
-    ]
-    for c in candidates:
-        p = win_font_dir / c
-        if p.exists():
-            return str(p)
+    # Exact match
+    if key in FONT_CACHE:
+        return FONT_CACHE[key]
+
+    # Partial match
+    for name, path in FONT_CACHE.items():
+        if key in name:
+            return path
 
     return None
-
-
 # ---------- Animation helpers ---------- #
 
 def fade_in_frames(base_img, text, frames, font_obj, color, pos):

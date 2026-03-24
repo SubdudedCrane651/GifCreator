@@ -1,0 +1,16 @@
+{
+    "image_path": "F:/Python/GifCreator/animation.gif",
+    "timeline": [
+        {
+            "effect": "Fade In",
+            "text": "Disney",
+            "frames": 20,
+            "duration": 80,
+            "font_name": "Waltograph",
+            "font_size": 32,
+            "color": "#FFFFFF",
+            "text_x": 15,
+            "text_y": 80
+        }
+    ]
+}
