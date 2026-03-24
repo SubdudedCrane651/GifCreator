@@ -178,8 +178,37 @@ class GifCreatorTk:
         tk.Button(bottom_frame, text="Preview Animation", command=self.preview_animation).grid(row=0, column=0, padx=5)
         tk.Button(bottom_frame, text="Stop Preview", command=self.stop_preview).grid(row=0, column=1, padx=5)
         tk.Button(bottom_frame, text="Generate GIF", command=self.generate_gif).grid(row=0, column=2, padx=5)
-        tk.Button(bottom_frame, text="Save Project (.bsd)", command=self.save_project).grid(row=1, column=0, padx=5)
-        tk.Button(bottom_frame, text="Load Project (.bsd)", command=self.load_project).grid(row=1, column=1, padx=5)
+        tk.Button(bottom_frame, text="Save Project (.json)", command=self.save_project).grid(row=1, column=0, padx=5)
+        tk.Button(bottom_frame, text="Load Project (.json)", command=self.load_project).grid(row=1, column=1, padx=5)
+        tk.Button(bottom_frame, text="Large Preview Window", command=self.open_large_preview).grid(row=0, column=3, padx=5)
+
+    def open_large_preview(self):
+        frames, durations = self.build_frames()
+        if not frames:
+            return
+
+        # Create a new window
+        preview_win = tk.Toplevel(self.root)
+        preview_win.title("Large Animation Preview")
+        preview_win.geometry("1000x600")
+
+        label = tk.Label(preview_win, bg="black")
+        label.pack(fill="both", expand=True)
+
+        # Convert frames to PhotoImage at large size
+        photos = []
+        for f in frames:
+            img = f.copy()
+            img.thumbnail((1000, 600), Image.LANCZOS)
+            photos.append(ImageTk.PhotoImage(img))
+
+        delay = durations[0] if durations else 80
+
+        def play(i=0):
+            label.config(image=photos[i])
+            preview_win.after(delay, lambda: play((i + 1) % len(photos)))
+
+        play()
 
     def save_project(self):
         if not self.image_path:
@@ -235,7 +264,7 @@ class GifCreatorTk:
             return
 
         img = Image.open(self.image_path)
-        img.thumbnail((400, 250), Image.LANCZOS)
+        img.thumbnail((800,450), Image.LANCZOS)
         self.preview_imgtk = ImageTk.PhotoImage(img)
         self.preview_label.configure(image=self.preview_imgtk, text="")
 
@@ -266,7 +295,7 @@ class GifCreatorTk:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to open image:\n{e}")
             return
-        img.thumbnail((400, 250), Image.LANCZOS)
+        img.thumbnail((800, 450), Image.LANCZOS)
         self.preview_imgtk = ImageTk.PhotoImage(img)
         self.preview_label.configure(image=self.preview_imgtk, text="")
 
@@ -387,7 +416,7 @@ class GifCreatorTk:
         self.preview_photos = []
         for f in frames:
             img = f.copy()
-            img.thumbnail((400, 250), Image.LANCZOS)
+            img.thumbnail((800,450), Image.LANCZOS)
             self.preview_photos.append(ImageTk.PhotoImage(img))
 
         self.preview_delay = durations[0] if durations else 80
