@@ -1,6 +1,6 @@
 import os
 import json
-import pathlib
+import glob
 import tkinter as tk
 from tkinter import filedialog, messagebox, colorchooser, font
 from PIL import Image, ImageDraw, ImageFont, ImageTk
@@ -14,23 +14,42 @@ def ensure_output_dir():
         os.makedirs(OUTPUT_DIR)
 
 
-# Manual font mapping for Windows
-FONT_NAME_MAP = {
-    "arial": "arial.ttf",
-    "arial black": "ariblk.ttf",
-    "impact": "impact.ttf",
-    "segoe ui": "segoeui.ttf",
-    "times new roman": "times.ttf",
-    "courier new": "cour.ttf",
-}
+# ---------- Scrollable container ---------- #
 
-import glob
-from PIL import ImageFont
+class ScrollableFrame(tk.Frame):
+    def __init__(self, parent):
+        super().__init__(parent)
+
+        canvas = tk.Canvas(self, borderwidth=0, highlightthickness=0)
+        scrollbar = tk.Scrollbar(self, orient="vertical", command=canvas.yview)
+        self.scrollable_frame = tk.Frame(canvas)
+
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(
+                scrollregion=canvas.bbox("all")
+            )
+        )
+
+        canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+
+
+# ---------- Font resolver (system + user fonts) ---------- #
 
 FONT_CACHE = {}
 
+
 def build_font_cache():
-    """Scan ALL Windows font directories and map real font names to file paths."""
+    """Scan Windows font directories and map real font names to file paths."""
     global FONT_CACHE
     FONT_CACHE = {}
 
@@ -57,48 +76,46 @@ def get_font_path(font_name):
     """Return best matching font file for a Tkinter font name."""
     if not FONT_CACHE:
         build_font_cache()
+        if not FONT_CACHE:
+            return None
 
     key = font_name.lower().strip()
 
-    # Exact match
     if key in FONT_CACHE:
         return FONT_CACHE[key]
 
-    # Partial match
     for name, path in FONT_CACHE.items():
         if key in name:
             return path
 
     return None
-# ---------- Animation helpers ---------- #
 
-def fade_in_frames(base_img, text, frames, font_obj, color, pos):
+
+# ---------- Animation helpers (image-only transforms) ---------- #
+
+def fade_in_frames(base_img, frames):
     w, h = base_img.size
     black = Image.new("RGBA", (w, h), (0, 0, 0, 255))
     result = []
     for i in range(frames):
         t = i / (frames - 1)
         frame = Image.blend(black, base_img, t)
-        if text:
-            ImageDraw.Draw(frame).text(pos, text, fill=color, font=font_obj)
         result.append(frame)
     return result
 
 
-def fade_out_frames(base_img, text, frames, font_obj, color, pos):
+def fade_out_frames(base_img, frames):
     w, h = base_img.size
     black = Image.new("RGBA", (w, h), (0, 0, 0, 255))
     result = []
     for i in range(frames):
         t = i / (frames - 1)
         frame = Image.blend(base_img, black, t)
-        if text:
-            ImageDraw.Draw(frame).text(pos, text, fill=color, font=font_obj)
         result.append(frame)
     return result
 
 
-def zoom_in_frames(base_img, text, frames, font_obj, color, pos):
+def zoom_in_frames(base_img, frames):
     w, h = base_img.size
     result = []
     for i in range(frames):
@@ -106,13 +123,11 @@ def zoom_in_frames(base_img, text, frames, font_obj, color, pos):
         nw, nh = int(w * scale), int(h * scale)
         frame = base_img.resize((nw, nh), Image.LANCZOS)
         frame = frame.crop((nw//2 - w//2, nh//2 - h//2, nw//2 + w//2, nh//2 + h//2))
-        if text:
-            ImageDraw.Draw(frame).text(pos, text, fill=color, font=font_obj)
         result.append(frame)
     return result
 
 
-def zoom_out_frames(base_img, text, frames, font_obj, color, pos):
+def zoom_out_frames(base_img, frames):
     w, h = base_img.size
     result = []
     for i in range(frames):
@@ -120,8 +135,6 @@ def zoom_out_frames(base_img, text, frames, font_obj, color, pos):
         nw, nh = int(w * scale), int(h * scale)
         frame = base_img.resize((nw, nh), Image.LANCZOS)
         frame = frame.crop((nw//2 - w//2, nh//2 - h//2, nw//2 + w//2, nh//2 + h//2))
-        if text:
-            ImageDraw.Draw(frame).text(pos, text, fill=color, font=font_obj)
         result.append(frame)
     return result
 
@@ -137,9 +150,10 @@ EFFECT_FUNCS = {
 # ---------- Main App ---------- #
 
 class GifCreatorTk:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("GIF Creator (Stable WYSIWYG)")
+    def __init__(self, parent, master_window):
+        self.parent = parent          # scrollable frame
+        self.root = master_window     # real Tk window
+        self.root.title("GIF Creator (WYSIWYG + Shadow + 3D)")
 
         self.image_path = None
         self.base_img = None
@@ -158,89 +172,137 @@ class GifCreatorTk:
         self.drag_dx = 0
         self.drag_dy = 0
 
+        # Shadow settings
+        self.shadow_enabled = tk.BooleanVar(value=True)
+        self.shadow_color = "#000000"
+        self.shadow_offset_x = tk.IntVar(value=3)
+        self.shadow_offset_y = tk.IntVar(value=3)
+
+        # 3D extrusion settings
+        self.extrude_enabled = tk.BooleanVar(value=False)
+        self.extrude_color = "#000000"
+        self.extrude_depth = tk.IntVar(value=5)
+        self.extrude_offset_x = tk.IntVar(value=1)
+        self.extrude_offset_y = tk.IntVar(value=1)
+
+        # Canvas text items
+        self.canvas_img_id = None
+        self.canvas_text_id = None
+        self.canvas_shadow_id = None
+        self.canvas_extrude_ids = []
+
         ensure_output_dir()
 
-        # Canvas preview (NEVER redrawn except on image load)
-        self.preview_frame = tk.Frame(root, width=800, height=450, bg="black")
+        # Canvas preview
+        self.preview_frame = tk.Frame(self.parent, width=800, height=450, bg="black")
         self.preview_frame.pack(padx=10, pady=10)
         self.preview_frame.pack_propagate(False)
 
         self.canvas = tk.Canvas(self.preview_frame, width=800, height=450, bg="black", highlightthickness=0)
         self.canvas.pack(fill="both", expand=True)
 
-        self.canvas_img_id = None
-        self.canvas_text_id = None
-
         self.canvas.bind("<Button-1>", self.on_click)
         self.canvas.bind("<B1-Motion>", self.on_drag)
         self.canvas.bind("<ButtonRelease-1>", self.on_release)
 
-        # Load image
-        top = tk.Frame(root)
+        # Top controls
+        top = tk.Frame(self.parent)
         top.pack()
-        tk.Button(top, text="Load Image", command=self.load_image).pack()
-
-        # Update text button (A1 behavior)
-        tk.Button(top, text="Update Text", command=self.update_text_item).pack(pady=5)
+        tk.Button(top, text="Load Image", command=self.load_image).pack(side="left", padx=5)
+        tk.Button(top, text="Update Text", command=self.update_text_item).pack(side="left", padx=5)
 
         # Font controls
-        font_frame = tk.Frame(root)
-        font_frame.pack(pady=5)
+        font_frame = tk.LabelFrame(self.parent, text="Font")
+        font_frame.pack(pady=5, fill="x", padx=10)
 
-        tk.Label(font_frame, text="Font:").grid(row=0, column=0)
+        tk.Label(font_frame, text="Font:").grid(row=0, column=0, sticky="w")
         self.font_var = tk.StringVar(value=self.font_name)
         tk.OptionMenu(font_frame, self.font_var, *sorted(font.families()),
-                      command=self.update_text_style).grid(row=0, column=1)
+                      command=self.update_text_style).grid(row=0, column=1, sticky="w")
 
-        tk.Label(font_frame, text="Size:").grid(row=0, column=2)
+        tk.Label(font_frame, text="Size:").grid(row=0, column=2, sticky="w")
         self.font_size_var = tk.IntVar(value=self.font_size)
         tk.Spinbox(font_frame, from_=8, to=100, textvariable=self.font_size_var,
-                   command=self.update_text_style).grid(row=0, column=3)
+                   command=self.update_text_style, width=5).grid(row=0, column=3, sticky="w")
 
-        tk.Button(font_frame, text="Color", command=self.pick_color).grid(row=0, column=4)
+        tk.Button(font_frame, text="Color", command=self.pick_color).grid(row=0, column=4, padx=5)
 
         # Position sliders
-        pos_frame = tk.Frame(root)
-        pos_frame.pack()
+        pos_frame = tk.LabelFrame(self.parent, text="Position")
+        pos_frame.pack(pady=5, fill="x", padx=10)
 
-        tk.Label(pos_frame, text="X:").grid(row=0, column=0)
+        tk.Label(pos_frame, text="X:").grid(row=0, column=0, sticky="w")
         tk.Scale(pos_frame, from_=0, to=2000, orient="horizontal", variable=self.text_x,
-                 command=lambda v: self.update_text_pos()).grid(row=0, column=1)
+                 command=lambda v: self.update_text_pos()).grid(row=0, column=1, sticky="we")
 
-        tk.Label(pos_frame, text="Y:").grid(row=1, column=0)
+        tk.Label(pos_frame, text="Y:").grid(row=1, column=0, sticky="w")
         tk.Scale(pos_frame, from_=0, to=2000, orient="horizontal", variable=self.text_y,
-                 command=lambda v: self.update_text_pos()).grid(row=1, column=1)
+                 command=lambda v: self.update_text_pos()).grid(row=1, column=1, sticky="we")
 
-        # Effect controls
-        eff = tk.Frame(root)
-        eff.pack(pady=5)
+        # Text effects (shadow + 3D)
+        effects_frame = tk.LabelFrame(self.parent, text="Text Effects")
+        effects_frame.pack(pady=5, fill="x", padx=10)
 
-        tk.Label(eff, text="Effect:").grid(row=0, column=0)
+        # Shadow controls
+        tk.Checkbutton(effects_frame, text="Enable Shadow", variable=self.shadow_enabled,
+                       command=self.update_text_style).grid(row=0, column=0, sticky="w")
+        tk.Button(effects_frame, text="Shadow Color", command=self.pick_shadow_color).grid(row=0, column=1, padx=5)
+
+        tk.Label(effects_frame, text="Shadow X:").grid(row=1, column=0, sticky="w")
+        tk.Scale(effects_frame, from_=-50, to=50, orient="horizontal", variable=self.shadow_offset_x,
+                 command=lambda v: self.update_text_pos()).grid(row=1, column=1, sticky="we")
+
+        tk.Label(effects_frame, text="Shadow Y:").grid(row=2, column=0, sticky="w")
+        tk.Scale(effects_frame, from_=-50, to=50, orient="horizontal", variable=self.shadow_offset_y,
+                 command=lambda v: self.update_text_pos()).grid(row=2, column=1, sticky="we")
+
+        # 3D extrusion controls
+        tk.Checkbutton(effects_frame, text="Enable 3D Extrusion", variable=self.extrude_enabled,
+                       command=self.update_text_style).grid(row=0, column=2, sticky="w")
+        tk.Button(effects_frame, text="3D Color", command=self.pick_extrude_color).grid(row=0, column=3, padx=5)
+
+        tk.Label(effects_frame, text="Depth:").grid(row=1, column=2, sticky="w")
+        tk.Spinbox(effects_frame, from_=1, to=30, textvariable=self.extrude_depth,
+                   command=self.update_text_style, width=5).grid(row=1, column=3, sticky="w")
+
+        tk.Label(effects_frame, text="3D X:").grid(row=2, column=2, sticky="w")
+        tk.Scale(effects_frame, from_=-10, to=10, orient="horizontal", variable=self.extrude_offset_x,
+                 command=lambda v: self.update_text_pos()).grid(row=2, column=3, sticky="we")
+
+        tk.Label(effects_frame, text="3D Y:").grid(row=3, column=2, sticky="w")
+        tk.Scale(effects_frame, from_=-10, to=10, orient="horizontal", variable=self.extrude_offset_y,
+                 command=lambda v: self.update_text_pos()).grid(row=3, column=3, sticky="we")
+
+        # Effect controls (animation)
+        eff = tk.LabelFrame(self.parent, text="Animation Effect")
+        eff.pack(pady=5, fill="x", padx=10)
+
+        tk.Label(eff, text="Effect:").grid(row=0, column=0, sticky="w")
         self.effect_var = tk.StringVar(value="Fade In")
-        tk.OptionMenu(eff, self.effect_var, *EFFECT_FUNCS.keys()).grid(row=0, column=1)
+        tk.OptionMenu(eff, self.effect_var, *EFFECT_FUNCS.keys()).grid(row=0, column=1, sticky="w")
 
-        tk.Label(eff, text="Text:").grid(row=0, column=2)
+        tk.Label(eff, text="Text:").grid(row=0, column=2, sticky="w")
         self.text_entry = tk.Entry(eff, width=20)
-        self.text_entry.grid(row=0, column=3)
+        self.text_entry.grid(row=0, column=3, sticky="w")
 
-        tk.Label(eff, text="Frames:").grid(row=1, column=0)
+        tk.Label(eff, text="Frames:").grid(row=1, column=0, sticky="w")
         self.frames_var = tk.IntVar(value=20)
-        tk.Spinbox(eff, from_=2, to=100, textvariable=self.frames_var).grid(row=1, column=1)
+        tk.Spinbox(eff, from_=2, to=100, textvariable=self.frames_var, width=5).grid(row=1, column=1, sticky="w")
 
-        tk.Label(eff, text="Duration:").grid(row=1, column=2)
+        tk.Label(eff, text="Duration:").grid(row=1, column=2, sticky="w")
         self.duration_var = tk.IntVar(value=80)
-        tk.Spinbox(eff, from_=10, to=1000, textvariable=self.duration_var).grid(row=1, column=3)
+        tk.Spinbox(eff, from_=10, to=1000, textvariable=self.duration_var, width=5).grid(row=1, column=3, sticky="w")
 
         tk.Button(eff, text="Add Effect", command=self.add_effect).grid(row=2, column=0, columnspan=4, pady=5)
 
         # Timeline
-        self.timeline_list = tk.Listbox(root, height=6)
+        self.timeline_list = tk.Listbox(self.parent, height=6)
         self.timeline_list.pack(fill="x", padx=10)
 
-        tk.Button(root, text="Remove Selected Effect", command=self.remove_effect).pack(pady=5)
+        tk.Button(self.parent, text="Remove Selected Effect", command=self.remove_effect).pack(pady=5)
 
         # Bottom buttons
-        bottom = tk.Frame(root)
+        bottom = tk.Frame(self.parent)
         bottom.pack(pady=10)
 
         tk.Button(bottom, text="Large Preview", command=self.large_preview).grid(row=0, column=0, padx=5)
@@ -248,7 +310,7 @@ class GifCreatorTk:
         tk.Button(bottom, text="Save Project", command=self.save_project).grid(row=1, column=0, padx=5)
         tk.Button(bottom, text="Load Project", command=self.load_project).grid(row=1, column=1, padx=5)
 
-    # ---------- WYSIWYG (never redraw except on image load) ---------- #
+    # ---------- WYSIWYG ---------- #
 
     def load_image(self):
         path = filedialog.askopenfilename(
@@ -260,40 +322,140 @@ class GifCreatorTk:
         self.image_path = path
         self.base_img = Image.open(path).convert("RGBA")
 
-        # Draw image ONCE
         img = self.base_img.copy()
         img.thumbnail((800, 450), Image.LANCZOS)
         self.preview_imgtk = ImageTk.PhotoImage(img)
+
         self.canvas.delete("all")
         self.canvas_img_id = self.canvas.create_image(0, 0, image=self.preview_imgtk, anchor="nw")
 
-        # Draw text ONCE
+        self.create_text_items()
+
+    def create_text_items(self):
+        if self.canvas_text_id:
+            self.canvas.delete(self.canvas_text_id)
+        if self.canvas_shadow_id:
+            self.canvas.delete(self.canvas_shadow_id)
+        for item in self.canvas_extrude_ids:
+            self.canvas.delete(item)
+        self.canvas_extrude_ids = []
+
+        x = self.text_x.get()
+        y = self.text_y.get()
+        text = self.text_entry.get()
+        font_tuple = (self.font_var.get(), self.font_size_var.get())
+
+        if self.extrude_enabled.get():
+            depth = max(1, self.extrude_depth.get())
+            dx = self.extrude_offset_x.get()
+            dy = self.extrude_offset_y.get()
+            for i in range(depth, 0, -1):
+                ex = x + dx * i
+                ey = y + dy * i
+                item = self.canvas.create_text(
+                    ex, ey, text=text, fill=self.extrude_color,
+                    font=font_tuple, anchor="nw"
+                )
+                self.canvas_extrude_ids.append(item)
+
+        if self.shadow_enabled.get():
+            sx = x + self.shadow_offset_x.get()
+            sy = y + self.shadow_offset_y.get()
+            self.canvas_shadow_id = self.canvas.create_text(
+                sx, sy, text=text, fill=self.shadow_color,
+                font=font_tuple, anchor="nw"
+            )
+        else:
+            self.canvas_shadow_id = None
+
         self.canvas_text_id = self.canvas.create_text(
-            self.text_x.get(),
-            self.text_y.get(),
-            text=self.text_entry.get(),
-            fill=self.text_color,
-            font=(self.font_var.get(), self.font_size_var.get()),
-            anchor="nw"
+            x, y, text=text, fill=self.text_color,
+            font=font_tuple, anchor="nw"
         )
+
+        if self.canvas_shadow_id:
+            self.canvas.tag_lower(self.canvas_shadow_id)
+        for item in self.canvas_extrude_ids:
+            self.canvas.tag_lower(item)
         self.canvas.tag_raise(self.canvas_text_id)
 
     def update_text_item(self):
-        """Apply text box changes to the WYSIWYG preview."""
-        if self.canvas_text_id:
-            self.canvas.itemconfig(self.canvas_text_id, text=self.text_entry.get())
+        if not self.canvas_text_id:
+            return
 
+        text = self.text_entry.get()
+
+        # Update WYSIWYG main text
+        self.canvas.itemconfig(self.canvas_text_id, text=text)
+
+        # Update shadow
+        if self.canvas_shadow_id and self.shadow_enabled.get():
+            self.canvas.itemconfig(self.canvas_shadow_id, text=text)
+
+        # Update 3D layers
+        for item in self.canvas_extrude_ids:
+            self.canvas.itemconfig(item, text=text)
+
+        # --- NEW: Sync with last timeline entry ---
+        if self.timeline:
+            last = self.timeline[-1]
+            last["text"] = text
+            last["text_x"] = self.text_x.get()
+            last["text_y"] = self.text_y.get()
+            last["font_name"] = self.font_var.get()
+            last["font_size"] = self.font_size_var.get()
+            last["color"] = self.text_color
+            last["shadow_enabled"] = self.shadow_enabled.get()
+            last["shadow_color"] = self.shadow_color
+            last["shadow_offset_x"] = self.shadow_offset_x.get()
+            last["shadow_offset_y"] = self.shadow_offset_y.get()
+            last["extrude_enabled"] = self.extrude_enabled.get()
+            last["extrude_color"] = self.extrude_color
+            last["extrude_depth"] = self.extrude_depth.get()
+            last["extrude_offset_x"] = self.extrude_offset_x.get()
+            last["extrude_offset_y"] = self.extrude_offset_y.get()
+            
     def update_text_style(self, *args):
-        if self.canvas_text_id:
-            self.canvas.itemconfig(
-                self.canvas_text_id,
-                font=(self.font_var.get(), self.font_size_var.get()),
-                fill=self.text_color
-            )
+        if not self.canvas_text_id:
+            return
+
+        # Recreate all text layers (main, shadow, 3D)
+        self.create_text_items()
 
     def update_text_pos(self):
-        if self.canvas_text_id:
-            self.canvas.coords(self.canvas_text_id, self.text_x.get(), self.text_y.get())
+        if not self.canvas_text_id:
+            return
+        x = self.text_x.get()
+        y = self.text_y.get()
+        self.canvas.coords(self.canvas_text_id, x, y)
+
+        if self.canvas_shadow_id and self.shadow_enabled.get():
+            sx = x + self.shadow_offset_x.get()
+            sy = y + self.shadow_offset_y.get()
+            self.canvas.coords(self.canvas_shadow_id, sx, sy)
+
+        if self.extrude_enabled.get():
+            depth = max(1, self.extrude_depth.get())
+            dx = self.extrude_offset_x.get()
+            dy = self.extrude_offset_y.get()
+            for item in self.canvas_extrude_ids:
+                self.canvas.delete(item)
+            self.canvas_extrude_ids = []
+            for i in range(depth, 0, -1):
+                ex = x + dx * i
+                ey = y + dy * i
+                item = self.canvas.create_text(
+                    ex, ey, text=self.text_entry.get(),
+                    fill=self.extrude_color,
+                    font=(self.font_var.get(), self.font_size_var.get()),
+                    anchor="nw"
+                )
+                self.canvas_extrude_ids.append(item)
+            for item in self.canvas_extrude_ids:
+                self.canvas.tag_lower(item)
+            if self.canvas_shadow_id:
+                self.canvas.tag_lower(self.canvas_shadow_id)
+            self.canvas.tag_raise(self.canvas_text_id)
 
     def pick_color(self):
         c = colorchooser.askcolor(initialcolor=self.text_color)[1]
@@ -301,6 +463,18 @@ class GifCreatorTk:
             self.text_color = c
             if self.canvas_text_id:
                 self.canvas.itemconfig(self.canvas_text_id, fill=c)
+
+    def pick_shadow_color(self):
+        c = colorchooser.askcolor(initialcolor=self.shadow_color)[1]
+        if c:
+            self.shadow_color = c
+            self.create_text_items()
+
+    def pick_extrude_color(self):
+        c = colorchooser.askcolor(initialcolor=self.extrude_color)[1]
+        if c:
+            self.extrude_color = c
+            self.create_text_items()
 
     # ---------- Dragging ---------- #
 
@@ -319,9 +493,9 @@ class GifCreatorTk:
             return
         new_x = event.x - self.drag_dx
         new_y = event.y - self.drag_dy
-        self.canvas.coords(self.canvas_text_id, new_x, new_y)
         self.text_x.set(int(new_x))
         self.text_y.set(int(new_y))
+        self.update_text_pos()
 
     def on_release(self, event):
         self.dragging = False
@@ -339,6 +513,15 @@ class GifCreatorTk:
             "color": self.text_color,
             "text_x": self.text_x.get(),
             "text_y": self.text_y.get(),
+            "shadow_enabled": self.shadow_enabled.get(),
+            "shadow_color": self.shadow_color,
+            "shadow_offset_x": self.shadow_offset_x.get(),
+            "shadow_offset_y": self.shadow_offset_y.get(),
+            "extrude_enabled": self.extrude_enabled.get(),
+            "extrude_color": self.extrude_color,
+            "extrude_depth": self.extrude_depth.get(),
+            "extrude_offset_x": self.extrude_offset_x.get(),
+            "extrude_offset_y": self.extrude_offset_y.get(),
         }
         self.timeline.append(entry)
         self.timeline_list.insert(
@@ -354,7 +537,7 @@ class GifCreatorTk:
         self.timeline_list.delete(idx)
         del self.timeline[idx]
 
-    # ---------- Frame building ---------- #
+    # ---------- Frame building (with shadow + 3D) ---------- #
 
     def build_frames(self):
         if not self.base_img or not self.timeline:
@@ -363,31 +546,75 @@ class GifCreatorTk:
         frames = []
         durations = []
 
+        # Real image size
+        w_real, h_real = self.base_img.size
+
+        # WYSIWYG canvas size
+        w_wys, h_wys = 800, 450
+
+        # Scale factors
+        scale_x = w_real / w_wys
+        scale_y = h_real / h_wys
+
         for eff in self.timeline:
             func = EFFECT_FUNCS[eff["effect"]]
 
+            # Scale font size
+            scaled_font_size = max(1, int(eff["font_size"] * scale_y))
+
+            # Resolve font path
             font_path = get_font_path(eff["font_name"])
             if font_path:
                 try:
-                    pil_font = ImageFont.truetype(font_path, eff["font_size"])
+                    pil_font = ImageFont.truetype(font_path, scaled_font_size)
                 except Exception:
                     pil_font = ImageFont.load_default()
             else:
                 try:
-                    pil_font = ImageFont.truetype(eff["font_name"], eff["font_size"])
+                    pil_font = ImageFont.truetype(eff["font_name"], scaled_font_size)
                 except Exception:
                     pil_font = ImageFont.load_default()
 
-            f = func(
-                self.base_img,
-                eff["text"],
-                eff["frames"],
-                pil_font,
-                eff["color"],
-                (eff["text_x"], eff["text_y"])
-            )
-            frames.extend(f)
-            durations.extend([eff["duration"]] * len(f))
+            # Generate base frames (image-only transforms)
+            base_frames = func(self.base_img, eff["frames"])
+
+            # Draw styled text on each frame
+            for frame in base_frames:
+                draw = ImageDraw.Draw(frame)
+
+                # Scale position
+                x = int(eff["text_x"] * scale_x)
+                y = int(eff["text_y"] * scale_y)
+
+                text = eff["text"]
+                color = eff["color"]
+
+                # ---------- 3D EXTRUSION ----------
+                if eff.get("extrude_enabled"):
+                    depth = max(1, int(eff.get("extrude_depth", 5)))
+
+                    dx = int(eff.get("extrude_offset_x", 1) * scale_x)
+                    dy = int(eff.get("extrude_offset_y", 1) * scale_y)
+
+                    extrude_color = eff.get("extrude_color", "#000000")
+
+                    for i in range(depth, 0, -1):
+                        ex = x + dx * i
+                        ey = y + dy * i
+                        draw.text((ex, ey), text, fill=extrude_color, font=pil_font)
+
+                # ---------- SHADOW ----------
+                if eff.get("shadow_enabled"):
+                    sx = x + int(eff.get("shadow_offset_x", 3) * scale_x)
+                    sy = y + int(eff.get("shadow_offset_y", 3) * scale_y)
+                    shadow_color = eff.get("shadow_color", "#000000")
+                    draw.text((sx, sy), text, fill=shadow_color, font=pil_font)
+
+                # ---------- MAIN TEXT ----------
+                draw.text((x, y), text, fill=color, font=pil_font)
+
+                frames.append(frame)
+                durations.append(eff["duration"])
 
         return frames, durations
 
@@ -412,10 +639,9 @@ class GifCreatorTk:
             img.thumbnail((1000, 600))
             photos.append(ImageTk.PhotoImage(img))
 
-        delay = durations[0] if durations else 80
-
         def play(i=0):
             label.config(image=photos[i])
+            delay = durations[i] if i < len(durations) else 80
             win.after(delay, lambda: play((i + 1) % len(photos)))
 
         play()
@@ -473,7 +699,6 @@ class GifCreatorTk:
 
         self.base_img = Image.open(self.image_path).convert("RGBA")
 
-        # Redraw image + text ONCE
         img = self.base_img.copy()
         img.thumbnail((800, 450), Image.LANCZOS)
         self.preview_imgtk = ImageTk.PhotoImage(img)
@@ -488,7 +713,6 @@ class GifCreatorTk:
                 f"{eff['effect']} | {eff['font_name']} {eff['font_size']} | {eff['text']}"
             )
 
-        # Restore last text state to WYSIWYG
         if self.timeline:
             last = self.timeline[-1]
             self.text_x.set(last["text_x"])
@@ -496,21 +720,28 @@ class GifCreatorTk:
             self.font_var.set(last["font_name"])
             self.font_size_var.set(last["font_size"])
             self.text_color = last["color"]
+            self.shadow_enabled.set(last.get("shadow_enabled", True))
+            self.shadow_color = last.get("shadow_color", "#000000")
+            self.shadow_offset_x.set(last.get("shadow_offset_x", 3))
+            self.shadow_offset_y.set(last.get("shadow_offset_y", 3))
+            self.extrude_enabled.set(last.get("extrude_enabled", False))
+            self.extrude_color = last.get("extrude_color", "#000000")
+            self.extrude_depth.set(last.get("extrude_depth", 5))
+            self.extrude_offset_x.set(last.get("extrude_offset_x", 1))
+            self.extrude_offset_y.set(last.get("extrude_offset_y", 1))
             self.text_entry.delete(0, tk.END)
             self.text_entry.insert(0, last["text"])
 
-        self.canvas_text_id = self.canvas.create_text(
-            self.text_x.get(),
-            self.text_y.get(),
-            text=self.text_entry.get(),
-            fill=self.text_color,
-            font=(self.font_var.get(), self.font_size_var.get()),
-            anchor="nw"
-        )
-        self.canvas.tag_raise(self.canvas_text_id)
+        self.create_text_items()
 
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = GifCreatorTk(root)
+    root.title("GIF Creator (Scrollable)")
+
+    scroll = ScrollableFrame(root)
+    scroll.pack(fill="both", expand=True)
+
+    app = GifCreatorTk(scroll.scrollable_frame, root)
+
     root.mainloop()
