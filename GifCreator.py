@@ -14,24 +14,46 @@ def ensure_output_dir():
         os.makedirs(OUTPUT_DIR)
 
 
+# Manual font mapping for Windows
+FONT_NAME_MAP = {
+    "arial": "arial.ttf",
+    "arial black": "ariblk.ttf",
+    "impact": "impact.ttf",
+    "segoe ui": "segoeui.ttf",
+    "times new roman": "times.ttf",
+    "courier new": "cour.ttf",
+}
+
+
 def get_font_path(font_name):
+    """Map Tkinter font names to real Windows font files."""
     win_font_dir = pathlib.Path("C:/Windows/Fonts")
+    name_key = font_name.strip().lower()
+
+    # Manual map first
+    if name_key in FONT_NAME_MAP:
+        p = win_font_dir / FONT_NAME_MAP[name_key]
+        if p.exists():
+            return str(p)
+
+    # Generic guesses
     candidates = [
         f"{font_name}.ttf",
-        f"{font_name}.TTF",
         f"{font_name}.otf",
-        f"{font_name}.OTF",
-        f"{font_name.lower()}.ttf",
-        f"{font_name.lower()}.otf",
+        f"{name_key}.ttf",
+        f"{name_key}.otf",
+        f"{name_key.replace(' ', '')}.ttf",
+        f"{name_key.replace(' ', '')}.otf",
     ]
     for c in candidates:
         p = win_font_dir / c
         if p.exists():
             return str(p)
+
     return None
 
 
-# ---------- animation helpers ---------- #
+# ---------- Animation helpers ---------- #
 
 def fade_in_frames(base_img, text, frames, font_obj, color, pos):
     w, h = base_img.size
@@ -95,10 +117,12 @@ EFFECT_FUNCS = {
 }
 
 
+# ---------- Main App ---------- #
+
 class GifCreatorTk:
     def __init__(self, root):
         self.root = root
-        self.root.title("GIF Creator (WYSIWYG)")
+        self.root.title("GIF Creator (Stable WYSIWYG)")
 
         self.image_path = None
         self.base_img = None
@@ -119,7 +143,7 @@ class GifCreatorTk:
 
         ensure_output_dir()
 
-        # Canvas preview
+        # Canvas preview (NEVER redrawn except on image load)
         self.preview_frame = tk.Frame(root, width=800, height=450, bg="black")
         self.preview_frame.pack(padx=10, pady=10)
         self.preview_frame.pack_propagate(False)
@@ -138,6 +162,9 @@ class GifCreatorTk:
         top = tk.Frame(root)
         top.pack()
         tk.Button(top, text="Load Image", command=self.load_image).pack()
+
+        # Update text button (A1 behavior)
+        tk.Button(top, text="Update Text", command=self.update_text_item).pack(pady=5)
 
         # Font controls
         font_frame = tk.Frame(root)
@@ -193,6 +220,8 @@ class GifCreatorTk:
         self.timeline_list = tk.Listbox(root, height=6)
         self.timeline_list.pack(fill="x", padx=10)
 
+        tk.Button(root, text="Remove Selected Effect", command=self.remove_effect).pack(pady=5)
+
         # Bottom buttons
         bottom = tk.Frame(root)
         bottom.pack(pady=10)
@@ -202,7 +231,7 @@ class GifCreatorTk:
         tk.Button(bottom, text="Save Project", command=self.save_project).grid(row=1, column=0, padx=5)
         tk.Button(bottom, text="Load Project", command=self.load_project).grid(row=1, column=1, padx=5)
 
-    # ---------- WYSIWYG ---------- #
+    # ---------- WYSIWYG (never redraw except on image load) ---------- #
 
     def load_image(self):
         path = filedialog.askopenfilename(
@@ -210,35 +239,32 @@ class GifCreatorTk:
         )
         if not path:
             return
+
         self.image_path = path
         self.base_img = Image.open(path).convert("RGBA")
-        self.redraw()
 
-    def redraw(self):
-        self.canvas.delete("all")
-
-        if not self.base_img:
-            return
-
+        # Draw image ONCE
         img = self.base_img.copy()
         img.thumbnail((800, 450), Image.LANCZOS)
         self.preview_imgtk = ImageTk.PhotoImage(img)
-
+        self.canvas.delete("all")
         self.canvas_img_id = self.canvas.create_image(0, 0, image=self.preview_imgtk, anchor="nw")
 
-        text = self.text_entry.get()
-        if text:
-            self.canvas_text_id = self.canvas.create_text(
-                self.text_x.get(),
-                self.text_y.get(),
-                text=text,
-                fill=self.text_color,
-                font=(self.font_var.get(), self.font_size_var.get()),
-                anchor="nw"
-            )
-            self.canvas.tag_raise(self.canvas_text_id)
-        else:
-            self.canvas_text_id = None
+        # Draw text ONCE
+        self.canvas_text_id = self.canvas.create_text(
+            self.text_x.get(),
+            self.text_y.get(),
+            text=self.text_entry.get(),
+            fill=self.text_color,
+            font=(self.font_var.get(), self.font_size_var.get()),
+            anchor="nw"
+        )
+        self.canvas.tag_raise(self.canvas_text_id)
+
+    def update_text_item(self):
+        """Apply text box changes to the WYSIWYG preview."""
+        if self.canvas_text_id:
+            self.canvas.itemconfig(self.canvas_text_id, text=self.text_entry.get())
 
     def update_text_style(self, *args):
         if self.canvas_text_id:
@@ -258,6 +284,8 @@ class GifCreatorTk:
             self.text_color = c
             if self.canvas_text_id:
                 self.canvas.itemconfig(self.canvas_text_id, fill=c)
+
+    # ---------- Dragging ---------- #
 
     def on_click(self, event):
         if not self.canvas_text_id:
@@ -296,7 +324,18 @@ class GifCreatorTk:
             "text_y": self.text_y.get(),
         }
         self.timeline.append(entry)
-        self.timeline_list.insert(tk.END, f"{entry['effect']} | {entry['text']}")
+        self.timeline_list.insert(
+            tk.END,
+            f"{entry['effect']} | {entry['font_name']} {entry['font_size']} | {entry['text']}"
+        )
+
+    def remove_effect(self):
+        sel = self.timeline_list.curselection()
+        if not sel:
+            return
+        idx = sel[0]
+        self.timeline_list.delete(idx)
+        del self.timeline[idx]
 
     # ---------- Frame building ---------- #
 
@@ -317,7 +356,10 @@ class GifCreatorTk:
                 except Exception:
                     pil_font = ImageFont.load_default()
             else:
-                pil_font = ImageFont.load_default()
+                try:
+                    pil_font = ImageFont.truetype(eff["font_name"], eff["font_size"])
+                except Exception:
+                    pil_font = ImageFont.load_default()
 
             f = func(
                 self.base_img,
@@ -413,12 +455,23 @@ class GifCreatorTk:
             return
 
         self.base_img = Image.open(self.image_path).convert("RGBA")
-        self.timeline = data["timeline"]
 
+        # Redraw image + text ONCE
+        img = self.base_img.copy()
+        img.thumbnail((800, 450), Image.LANCZOS)
+        self.preview_imgtk = ImageTk.PhotoImage(img)
+        self.canvas.delete("all")
+        self.canvas_img_id = self.canvas.create_image(0, 0, image=self.preview_imgtk, anchor="nw")
+
+        self.timeline = data["timeline"]
         self.timeline_list.delete(0, tk.END)
         for eff in self.timeline:
-            self.timeline_list.insert(tk.END, f"{eff['effect']} | {eff['text']}")
+            self.timeline_list.insert(
+                tk.END,
+                f"{eff['effect']} | {eff['font_name']} {eff['font_size']} | {eff['text']}"
+            )
 
+        # Restore last text state to WYSIWYG
         if self.timeline:
             last = self.timeline[-1]
             self.text_x.set(last["text_x"])
@@ -429,7 +482,15 @@ class GifCreatorTk:
             self.text_entry.delete(0, tk.END)
             self.text_entry.insert(0, last["text"])
 
-        self.redraw()
+        self.canvas_text_id = self.canvas.create_text(
+            self.text_x.get(),
+            self.text_y.get(),
+            text=self.text_entry.get(),
+            fill=self.text_color,
+            font=(self.font_var.get(), self.font_size_var.get()),
+            anchor="nw"
+        )
+        self.canvas.tag_raise(self.canvas_text_id)
 
 
 if __name__ == "__main__":
