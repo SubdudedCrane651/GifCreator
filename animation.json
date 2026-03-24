@@ -1,0 +1,41 @@
+{
+    "image_path": "F:/Python/GifCreator/animation.gif",
+    "timeline": [
+        {
+            "effect": "Fade In",
+            "text": "Merry Cristmas",
+            "frames": 40,
+            "duration": 80,
+            "font_name": "Arial",
+            "font_size": 20,
+            "color": "#FFFFFF"
+        },
+        {
+            "effect": "Fade Out",
+            "text": "Merry Cristmas",
+            "frames": 40,
+            "duration": 80,
+            "font_name": "Arial",
+            "font_size": 20,
+            "color": "#FFFFFF"
+        },
+        {
+            "effect": "Zoom In",
+            "text": "Merry Cristmas",
+            "frames": 40,
+            "duration": 80,
+            "font_name": "Arial",
+            "font_size": 20,
+            "color": "#FFFFFF"
+        },
+        {
+            "effect": "Zoom Out",
+            "text": "Merry Cristmas",
+            "frames": 40,
+            "duration": 80,
+            "font_name": "Arial",
+            "font_size": 20,
+            "color": "#FFFFFF"
+        }
+    ]
+}
