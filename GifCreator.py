@@ -1,8 +1,9 @@
 import os
+import json
+import pathlib
 import tkinter as tk
 from tkinter import filedialog, messagebox, colorchooser, font
 from PIL import Image, ImageDraw, ImageFont, ImageTk
-import json
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(SCRIPT_DIR, "output_frames")
@@ -11,6 +12,24 @@ OUTPUT_DIR = os.path.join(SCRIPT_DIR, "output_frames")
 def ensure_output_dir():
     if not os.path.exists(OUTPUT_DIR):
         os.makedirs(OUTPUT_DIR)
+
+
+def get_font_path(font_name):
+    # Adjust if you’re not on Windows
+    win_font_dir = pathlib.Path("C:/Windows/Fonts")
+    candidates = [
+        f"{font_name}.ttf",
+        f"{font_name}.TTF",
+        f"{font_name}.otf",
+        f"{font_name}.OTF",
+        f"{font_name.lower()}.ttf",
+        f"{font_name.lower()}.otf",
+    ]
+    for c in candidates:
+        p = win_font_dir / c
+        if p.exists():
+            return str(p)
+    return None
 
 
 # ---------- animation helpers ---------- #
@@ -94,7 +113,7 @@ class GifCreatorTk:
         self.image_path = None
         self.preview_imgtk = None
 
-        self.timeline = []  # list of dicts: {effect, frames, duration, text, font_name, font_size, color}
+        self.timeline = []  # list of dicts
 
         self.text_color = "#FFFFFF"
         self.font_name = "Arial"
@@ -107,9 +126,18 @@ class GifCreatorTk:
 
         ensure_output_dir()
 
-        # Preview
-        self.preview_label = tk.Label(root, text="Load an image to begin", width=60, height=15, bg="gray20", fg="white")
-        self.preview_label.pack(padx=10, pady=10)
+        # Preview area (big, centered)
+        self.preview_frame = tk.Frame(root, width=800, height=450, bg="black")
+        self.preview_frame.pack(padx=10, pady=10)
+        self.preview_frame.pack_propagate(False)
+
+        self.preview_label = tk.Label(
+            self.preview_frame,
+            text="Load an image to begin",
+            bg="gray20",
+            fg="white"
+        )
+        self.preview_label.pack(expand=True)
 
         # Top controls: load image
         top_frame = tk.Frame(root)
@@ -133,6 +161,18 @@ class GifCreatorTk:
         tk.Spinbox(font_frame, from_=8, to=72, textvariable=self.font_size_var, width=5).grid(row=0, column=3, padx=5)
 
         tk.Button(font_frame, text="Text Color", command=self.pick_color).grid(row=0, column=4, padx=5)
+
+        # Text position controls
+        pos_frame = tk.Frame(root)
+        pos_frame.pack(pady=5)
+
+        tk.Label(pos_frame, text="Text X:").grid(row=0, column=0, padx=5)
+        self.text_x = tk.IntVar(value=10)
+        tk.Scale(pos_frame, from_=0, to=2000, orient="horizontal", variable=self.text_x, length=300).grid(row=0, column=1)
+
+        tk.Label(pos_frame, text="Text Y:").grid(row=1, column=0, padx=5)
+        self.text_y = tk.IntVar(value=10)
+        tk.Scale(pos_frame, from_=0, to=2000, orient="horizontal", variable=self.text_y, length=300).grid(row=1, column=1)
 
         # Effect controls
         effect_frame = tk.Frame(root)
@@ -171,114 +211,17 @@ class GifCreatorTk:
         tk.Button(tl_btns, text="Move Up", command=lambda: self.move_effect(-1)).pack(fill="x", pady=2)
         tk.Button(tl_btns, text="Move Down", command=lambda: self.move_effect(1)).pack(fill="x", pady=2)
 
-        # Bottom buttons: preview + generate
+        # Bottom buttons: preview + generate + project
         bottom_frame = tk.Frame(root)
         bottom_frame.pack(pady=10)
 
         tk.Button(bottom_frame, text="Preview Animation", command=self.preview_animation).grid(row=0, column=0, padx=5)
         tk.Button(bottom_frame, text="Stop Preview", command=self.stop_preview).grid(row=0, column=1, padx=5)
         tk.Button(bottom_frame, text="Generate GIF", command=self.generate_gif).grid(row=0, column=2, padx=5)
-        tk.Button(bottom_frame, text="Save Project (.json)", command=self.save_project).grid(row=1, column=0, padx=5)
-        tk.Button(bottom_frame, text="Load Project (.json)", command=self.load_project).grid(row=1, column=1, padx=5)
         tk.Button(bottom_frame, text="Large Preview Window", command=self.open_large_preview).grid(row=0, column=3, padx=5)
 
-    def open_large_preview(self):
-        frames, durations = self.build_frames()
-        if not frames:
-            return
-
-        # Create a new window
-        preview_win = tk.Toplevel(self.root)
-        preview_win.title("Large Animation Preview")
-        preview_win.geometry("1000x600")
-
-        label = tk.Label(preview_win, bg="black")
-        label.pack(fill="both", expand=True)
-
-        # Convert frames to PhotoImage at large size
-        photos = []
-        for f in frames:
-            img = f.copy()
-            img.thumbnail((1000, 600), Image.LANCZOS)
-            photos.append(ImageTk.PhotoImage(img))
-
-        delay = durations[0] if durations else 80
-
-        def play(i=0):
-            label.config(image=photos[i])
-            preview_win.after(delay, lambda: play((i + 1) % len(photos)))
-
-        play()
-
-    def save_project(self):
-        if not self.image_path:
-            messagebox.showwarning("No Image", "Load an image before saving a project.")
-            return
-
-        if not self.timeline:
-            messagebox.showwarning("No Effects", "Add at least one effect before saving.")
-            return
-
-        project = {
-            "image_path": self.image_path,
-            "timeline": self.timeline
-        }
-
-        save_path = filedialog.asksaveasfilename(
-            title="Save Project",
-            defaultextension=".json",
-            filetypes=[("JSON Project", "*.json"), ("All Files", "*.*")]
-        )
-
-        if not save_path:
-            return
-
-        try:
-            with open(save_path, "w") as f:
-                json.dump(project, f, indent=4)
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to save project:\n{e}")
-            return
-
-        messagebox.showinfo("Saved", f"Project saved to:\n{save_path}")        
-
-    def load_project(self):
-        path = filedialog.askopenfilename(
-            title="Load Project",
-            filetypes=[("JSON Project", "*.json"), ("All Files", "*.*")]
-        )
-        if not path:
-            return
-
-        try:
-            with open(path, "r") as f:
-                project = json.load(f)
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to load project:\n{e}")
-            return
-
-        # Load image
-        self.image_path = project.get("image_path")
-        if not self.image_path or not os.path.exists(self.image_path):
-            messagebox.showwarning("Missing Image", "The image file in this project cannot be found.")
-            return
-
-        img = Image.open(self.image_path)
-        img.thumbnail((800,450), Image.LANCZOS)
-        self.preview_imgtk = ImageTk.PhotoImage(img)
-        self.preview_label.configure(image=self.preview_imgtk, text="")
-
-        # Load timeline
-        self.timeline = project.get("timeline", [])
-        self.timeline_list.delete(0, tk.END)
-
-        for eff in self.timeline:
-            self.timeline_list.insert(
-                tk.END,
-                f"{eff['effect']} | {eff['frames']}f | {eff['duration']}ms | {eff['font_name']} {eff['font_size']} | {eff['text']}"
-            )
-
-        messagebox.showinfo("Loaded", "Project loaded successfully.")
+        tk.Button(bottom_frame, text="Save Project (.json)", command=self.save_project).grid(row=1, column=0, padx=5, pady=5)
+        tk.Button(bottom_frame, text="Load Project (.json)", command=self.load_project).grid(row=1, column=1, padx=5, pady=5)
 
     # ---------- basic helpers ---------- #
 
@@ -295,6 +238,8 @@ class GifCreatorTk:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to open image:\n{e}")
             return
+
+        img = img.convert("RGBA")
         img.thumbnail((800, 450), Image.LANCZOS)
         self.preview_imgtk = ImageTk.PhotoImage(img)
         self.preview_label.configure(image=self.preview_imgtk, text="")
@@ -321,9 +266,14 @@ class GifCreatorTk:
             "font_name": font_name,
             "font_size": font_size,
             "color": color,
+            "text_x": self.text_x.get(),
+            "text_y": self.text_y.get(),
         }
         self.timeline.append(entry)
-        self.timeline_list.insert(tk.END, f"{effect} | {frames}f | {duration}ms | {font_name} {font_size} | {text}")
+        self.timeline_list.insert(
+            tk.END,
+            f"{effect} | {frames}f | {duration}ms | {font_name} {font_size} | {text}"
+        )
 
     def remove_effect(self):
         sel = self.timeline_list.curselection()
@@ -367,9 +317,6 @@ class GifCreatorTk:
         all_frames = []
         durations = []
 
-        w, h = base_img.size
-        text_pos = (10, h // 2)
-
         for eff in self.timeline:
             effect_name = eff["effect"]
             text = eff["text"]
@@ -378,10 +325,15 @@ class GifCreatorTk:
             font_name = eff["font_name"]
             font_size = eff["font_size"]
             color = eff["color"]
+            text_pos = (eff.get("text_x", 10), eff.get("text_y", 10))
 
-            try:
-                pil_font = ImageFont.truetype(font_name, font_size)
-            except Exception:
+            font_path = get_font_path(font_name)
+            if font_path:
+                try:
+                    pil_font = ImageFont.truetype(font_path, font_size)
+                except Exception:
+                    pil_font = ImageFont.load_default()
+            else:
                 pil_font = ImageFont.load_default()
 
             func = EFFECT_FUNCS.get(effect_name)
@@ -416,7 +368,7 @@ class GifCreatorTk:
         self.preview_photos = []
         for f in frames:
             img = f.copy()
-            img.thumbnail((800,450), Image.LANCZOS)
+            img.thumbnail((800, 450), Image.LANCZOS)
             self.preview_photos.append(ImageTk.PhotoImage(img))
 
         self.preview_delay = durations[0] if durations else 80
@@ -433,6 +385,32 @@ class GifCreatorTk:
 
     def stop_preview(self):
         self.preview_running = False
+
+    def open_large_preview(self):
+        frames, durations = self.build_frames()
+        if not frames:
+            return
+
+        preview_win = tk.Toplevel(self.root)
+        preview_win.title("Large Animation Preview")
+        preview_win.geometry("1000x600")
+
+        label = tk.Label(preview_win, bg="black")
+        label.pack(fill="both", expand=True)
+
+        photos = []
+        for f in frames:
+            img = f.copy()
+            img.thumbnail((1000, 600), Image.LANCZOS)
+            photos.append(ImageTk.PhotoImage(img))
+
+        delay = durations[0] if durations else 80
+
+        def play(i=0):
+            label.config(image=photos[i])
+            preview_win.after(delay, lambda: play((i + 1) % len(photos)))
+
+        play()
 
     # ---------- generate GIF ---------- #
 
@@ -472,6 +450,76 @@ class GifCreatorTk:
             "Done",
             f"Animated GIF saved to:\n{save_path}\n\nFrames saved in:\n{OUTPUT_DIR}"
         )
+
+    # ---------- project save/load (JSON) ---------- #
+
+    def save_project(self):
+        if not self.image_path:
+            messagebox.showwarning("No Image", "Load an image before saving a project.")
+            return
+
+        if not self.timeline:
+            messagebox.showwarning("No Effects", "Add at least one effect before saving.")
+            return
+
+        project = {
+            "image_path": self.image_path,
+            "timeline": self.timeline
+        }
+
+        save_path = filedialog.asksaveasfilename(
+            title="Save Project",
+            defaultextension=".json",
+            filetypes=[("JSON Project", "*.json"), ("All Files", "*.*")]
+        )
+
+        if not save_path:
+            return
+
+        try:
+            with open(save_path, "w") as f:
+                json.dump(project, f, indent=4)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save project:\n{e}")
+            return
+
+        messagebox.showinfo("Saved", f"Project saved to:\n{save_path}")
+
+    def load_project(self):
+        path = filedialog.askopenfilename(
+            title="Load Project",
+            filetypes=[("JSON Project", "*.json"), ("All Files", "*.*")]
+        )
+        if not path:
+            return
+
+        try:
+            with open(path, "r") as f:
+                project = json.load(f)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load project:\n{e}")
+            return
+
+        self.image_path = project.get("image_path")
+        if not self.image_path or not os.path.exists(self.image_path):
+            messagebox.showwarning("Missing Image", "The image file in this project cannot be found.")
+            return
+
+        img = Image.open(self.image_path).convert("RGBA")
+        img.thumbnail((800, 450), Image.LANCZOS)
+        self.preview_imgtk = ImageTk.PhotoImage(img)
+        self.preview_label.configure(image=self.preview_imgtk, text="")
+
+        self.timeline = project.get("timeline", [])
+        self.timeline_list.delete(0, tk.END)
+
+        for eff in self.timeline:
+            self.timeline_list.insert(
+                tk.END,
+                f"{eff['effect']} | {eff['frames']}f | {eff['duration']}ms | {eff['font_name']} {eff['font_size']} | {eff['text']}"
+            )
+
+        messagebox.showinfo("Loaded", "Project loaded successfully.")
 
 
 if __name__ == "__main__":
