@@ -309,6 +309,7 @@ class GifCreatorTk:
         tk.Button(bottom, text="Generate GIF", command=self.generate_gif).grid(row=0, column=1, padx=5)
         tk.Button(bottom, text="Save Project", command=self.save_project).grid(row=1, column=0, padx=5)
         tk.Button(bottom, text="Load Project", command=self.load_project).grid(row=1, column=1, padx=5)
+        tk.Button(bottom, text="Export Still Image", command=self.export_still_image).grid(row=0, column=2, padx=5)
 
     # ---------- WYSIWYG ---------- #
 
@@ -378,6 +379,88 @@ class GifCreatorTk:
         for item in self.canvas_extrude_ids:
             self.canvas.tag_lower(item)
         self.canvas.tag_raise(self.canvas_text_id)
+
+    def export_still_image(self):
+        if not self.base_img:
+            messagebox.showwarning("No Image", "Load an image first.")
+            return
+
+        if not self.timeline:
+            messagebox.showwarning("No Text", "Add text or an effect first.")
+            return
+
+        # Use the last timeline entry for still export
+        eff = self.timeline[-1]
+
+        # Real image size
+        w_real, h_real = self.base_img.size
+
+        # WYSIWYG size
+        w_wys, h_wys = 800, 450
+
+        # Scale factors
+        scale_x = w_real / w_wys
+        scale_y = h_real / h_wys
+
+        # Scale position
+        x = int(eff["text_x"] * scale_x)
+        y = int(eff["text_y"] * scale_y)
+
+        # Scale font size
+        scaled_font_size = max(1, int(eff["font_size"] * scale_y))
+
+        # Resolve font
+        font_path = get_font_path(eff["font_name"])
+        if font_path:
+            try:
+                pil_font = ImageFont.truetype(font_path, scaled_font_size)
+            except:
+                pil_font = ImageFont.load_default()
+        else:
+            try:
+                pil_font = ImageFont.truetype(eff["font_name"], scaled_font_size)
+            except:
+                pil_font = ImageFont.load_default()
+
+        # Copy base image
+        frame = self.base_img.copy()
+        draw = ImageDraw.Draw(frame)
+
+        text = eff["text"]
+
+        # 3D extrusion
+        if eff.get("extrude_enabled"):
+            depth = max(1, int(eff.get("extrude_depth", 5)))
+            dx = int(eff.get("extrude_offset_x", 1) * scale_x)
+            dy = int(eff.get("extrude_offset_y", 1) * scale_y)
+            extrude_color = eff.get("extrude_color", "#000000")
+
+            for i in range(depth, 0, -1):
+                ex = x + dx * i
+                ey = y + dy * i
+                draw.text((ex, ey), text, fill=extrude_color, font=pil_font)
+
+        # Shadow
+        if eff.get("shadow_enabled"):
+            sx = x + int(eff.get("shadow_offset_x", 3) * scale_x)
+            sy = y + int(eff.get("shadow_offset_y", 3) * scale_y)
+            shadow_color = eff.get("shadow_color", "#000000")
+            draw.text((sx, sy), text, fill=shadow_color, font=pil_font)
+
+        # Main text
+        draw.text((x, y), text, fill=eff["color"], font=pil_font)
+
+        # Save dialog
+        path = filedialog.asksaveasfilename(
+            defaultextension=".png",
+            filetypes=[("PNG Image", "*.png"), ("JPEG Image", "*.jpg"), ("All Files", "*.*")]
+        )
+
+        if not path:
+            return
+
+        frame.save(path)
+        messagebox.showinfo("Saved", f"Still image saved to:\n{path}")        
 
     def update_text_item(self):
         if not self.canvas_text_id:
