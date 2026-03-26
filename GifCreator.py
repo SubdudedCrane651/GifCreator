@@ -861,28 +861,17 @@ class GifCreatorTk:
         scale_y = h_real / h_wys
 
         for eff in self.timeline:
-            func = EFFECT_FUNCS[eff["effect"]]
 
-            # Scale font size
-            scaled_font_size = max(1, int(eff["font_size"] * scale_y))
+            # Get effect function
+            func = EFFECT_FUNCS.get(eff["effect"], None)
 
-            # Resolve font path
-            font_path = get_font_path(eff["font_name"])
-            if font_path:
-                try:
-                    pil_font = ImageFont.truetype(font_path, scaled_font_size)
-                except Exception:
-                    pil_font = ImageFont.load_default()
+            # --- SAFETY CHECK: Handle "No Effect" or missing effect ---
+            if func is None:
+                base_frames = [self.base_img.copy() for _ in range(eff["frames"])]
             else:
-                try:
-                    pil_font = ImageFont.truetype(eff["font_name"], scaled_font_size)
-                except Exception:
-                    pil_font = ImageFont.load_default()
+                base_frames = func(self.base_img, eff["frames"])
 
-            # Generate base frames (image-only transforms)
-            base_frames = func(self.base_img, eff["frames"])
-
-            # Draw styled text on each frame
+            # Now draw text on each frame
             for frame in base_frames:
                 draw = ImageDraw.Draw(frame)
 
@@ -890,16 +879,30 @@ class GifCreatorTk:
                 x = int(eff["text_x"] * scale_x)
                 y = int(eff["text_y"] * scale_y)
 
+                # Scale font size
+                scaled_font_size = max(1, int(eff["font_size"] * scale_y))
+
+                # Resolve font
+                font_path = get_font_path(eff["font_name"])
+                if font_path:
+                    try:
+                        pil_font = ImageFont.truetype(font_path, scaled_font_size)
+                    except:
+                        pil_font = ImageFont.load_default()
+                else:
+                    try:
+                        pil_font = ImageFont.truetype(eff["font_name"], scaled_font_size)
+                    except:
+                        pil_font = ImageFont.load_default()
+
                 text = eff["text"]
                 color = eff["color"]
 
                 # ---------- 3D EXTRUSION ----------
                 if eff.get("extrude_enabled"):
                     depth = max(1, int(eff.get("extrude_depth", 5)))
-
                     dx = int(eff.get("extrude_offset_x", 1) * scale_x)
                     dy = int(eff.get("extrude_offset_y", 1) * scale_y)
-
                     extrude_color = eff.get("extrude_color", "#000000")
 
                     for i in range(depth, 0, -1):
