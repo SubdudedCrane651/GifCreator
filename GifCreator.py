@@ -183,6 +183,149 @@ def sand_in_frames(base_img, frames):
 
     return result
 
+def sand_out_frames(base_img, frames):
+    w, h = base_img.size
+    base = np.array(base_img.convert("RGBA"))
+    mask = np.ones((h, w), dtype=np.float32)
+    result = []
+
+    for i in range(frames):
+        hide = (i + 1) / frames
+        noise = np.random.rand(h, w)
+        mask = np.minimum(mask, (noise > hide).astype(np.float32))
+        frame = (base * mask[..., None]).astype(np.uint8)
+        result.append(Image.fromarray(frame, "RGBA"))
+
+    return result
+
+def stretch_from_direction(base_img, frames, direction="bottom"):
+    w, h = base_img.size
+    result = []
+
+    for i in range(frames):
+        t = (i + 1) / frames
+
+        if direction == "bottom":
+            crop_h = max(1, int(h * t))
+            crop = base_img.crop((0, h - crop_h, w, h))
+
+        elif direction == "top":
+            crop_h = max(1, int(h * t))
+            crop = base_img.crop((0, 0, w, crop_h))
+
+        elif direction == "left":
+            crop_w = max(1, int(w * t))
+            crop = base_img.crop((0, 0, crop_w, h))
+
+        elif direction == "right":
+            crop_w = max(1, int(w * t))
+            crop = base_img.crop((w - crop_w, 0, w, h))
+
+        frame = crop.resize((w, h), Image.LANCZOS)
+        result.append(frame)
+
+    return result
+
+def stretch_collapse_frames(base_img, frames, direction="bottom"):
+    w, h = base_img.size
+    result = []
+
+    for i in range(frames):
+        t = 1 - (i / (frames - 1))
+
+        if direction == "bottom":
+            crop_h = max(1, int(h * t))
+            crop = base_img.crop((0, h - crop_h, w, h))
+
+        elif direction == "top":
+            crop_h = max(1, int(h * t))
+            crop = base_img.crop((0, 0, w, crop_h))
+
+        elif direction == "left":
+            crop_w = max(1, int(w * t))
+            crop = base_img.crop((0, 0, crop_w, h))
+
+        elif direction == "right":
+            crop_w = max(1, int(w * t))
+            crop = base_img.crop((w - crop_w, 0, w, h))
+
+        frame = crop.resize((w, h), Image.LANCZOS)
+        result.append(frame)
+
+    return result
+
+def curtain_frames(base_img, frames, mode="open"):
+    w, h = base_img.size
+    result = []
+
+    for i in range(frames):
+        t = (i + 1) / frames if mode == "open" else 1 - (i / (frames - 1))
+        half = int((w // 2) * t)
+
+        left = base_img.crop((0, 0, half, h))
+        right = base_img.crop((w - half, 0, w, h))
+
+        frame = Image.new("RGBA", (w, h), (0, 0, 0, 255))
+        frame.paste(left, (0, 0))
+        frame.paste(right, (w - half, 0))
+
+        result.append(frame)
+
+    return result
+
+def diagonal_stretch_frames(base_img, frames):
+    w, h = base_img.size
+    result = []
+
+    for i in range(frames):
+        t = (i + 1) / frames
+        crop_w = max(1, int(w * t))
+        crop_h = max(1, int(h * t))
+        crop = base_img.crop((0, 0, crop_w, crop_h))
+        frame = crop.resize((w, h), Image.LANCZOS)
+        result.append(frame)
+
+    return result
+
+def pixel_dissolve_frames(base_img, frames):
+    w, h = base_img.size
+    base = np.array(base_img.convert("RGBA"))
+    result = []
+
+    order = np.random.permutation(w * h).reshape(h, w)
+
+    for i in range(frames):
+        threshold = int((i + 1) / frames * (w * h))
+        mask = (order < threshold).astype(np.uint8)
+        frame = (base * mask[..., None]).astype(np.uint8)
+        result.append(Image.fromarray(frame, "RGBA"))
+
+    return result
+
+def glitch_in_frames(base_img, frames):
+    w, h = base_img.size
+    result = []
+
+    for i in range(frames):
+        t = (i + 1) / frames
+        slice_h = max(1, int(h * t))
+
+        crop = base_img.crop((0, 0, w, slice_h))
+        frame = crop.resize((w, h), Image.NEAREST)
+
+        # Add glitch lines
+        arr = np.array(frame)
+        for _ in range(5):
+            y = np.random.randint(0, h)
+            shift = np.random.randint(-20, 20)
+            arr[y] = np.roll(arr[y], shift, axis=0)
+
+        result.append(Image.fromarray(arr, "RGBA"))
+
+    return result
+
+
+
 def zoom_out_frames(base_img, frames):
     w, h = base_img.size
     result = []
@@ -196,15 +339,32 @@ def zoom_out_frames(base_img, frames):
 
 
 EFFECT_FUNCS = {
+    "No Effect": None,
+
     "Fade In": fade_in_frames,
     "Fade Out": fade_out_frames,
     "Zoom In": zoom_in_frames,
     "Zoom Out": zoom_out_frames,
+
     "Sand In": sand_in_frames,
+    "Sand Out": sand_out_frames,
+
     "Stretch From Bottom": lambda img, f: stretch_from_direction(img, f, "bottom"),
     "Stretch From Top": lambda img, f: stretch_from_direction(img, f, "top"),
     "Stretch From Left": lambda img, f: stretch_from_direction(img, f, "left"),
     "Stretch From Right": lambda img, f: stretch_from_direction(img, f, "right"),
+
+    "Stretch Collapse Bottom": lambda img, f: stretch_collapse_frames(img, f, "bottom"),
+    "Stretch Collapse Top": lambda img, f: stretch_collapse_frames(img, f, "top"),
+    "Stretch Collapse Left": lambda img, f: stretch_collapse_frames(img, f, "left"),
+    "Stretch Collapse Right": lambda img, f: stretch_collapse_frames(img, f, "right"),
+
+    "Curtain Open": lambda img, f: curtain_frames(img, f, "open"),
+    "Curtain Close": lambda img, f: curtain_frames(img, f, "close"),
+
+    "Diagonal Stretch": diagonal_stretch_frames,
+    "Pixel Dissolve": pixel_dissolve_frames,
+    "Glitch In": glitch_in_frames,
 }
 
 
