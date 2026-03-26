@@ -4,6 +4,7 @@ import glob
 import tkinter as tk
 from tkinter import filedialog, messagebox, colorchooser, font
 from PIL import Image, ImageDraw, ImageFont, ImageTk
+import numpy as np
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(SCRIPT_DIR, "output_frames")
@@ -126,6 +127,61 @@ def zoom_in_frames(base_img, frames):
         result.append(frame)
     return result
 
+def stretch_from_direction(base_img, frames, direction="bottom"):
+    w, h = base_img.size
+    result = []
+
+    for i in range(frames):
+        t = (i + 1) / frames
+
+        if direction == "bottom":
+            crop_h = max(1, int(h * t))
+            crop = base_img.crop((0, h - crop_h, w, h))
+            frame = crop.resize((w, h), Image.LANCZOS)
+
+        elif direction == "top":
+            crop_h = max(1, int(h * t))
+            crop = base_img.crop((0, 0, w, crop_h))
+            frame = crop.resize((w, h), Image.LANCZOS)
+
+        elif direction == "left":
+            crop_w = max(1, int(w * t))
+            crop = base_img.crop((0, 0, crop_w, h))
+            frame = crop.resize((w, h), Image.LANCZOS)
+
+        elif direction == "right":
+            crop_w = max(1, int(w * t))
+            crop = base_img.crop((w - crop_w, 0, w, h))
+            frame = crop.resize((w, h), Image.LANCZOS)
+
+        result.append(frame)
+
+    return result
+
+def sand_in_frames(base_img, frames):
+    w, h = base_img.size
+    base = np.array(base_img.convert("RGBA"))
+
+    # Start fully transparent
+    mask = np.zeros((h, w), dtype=np.float32)
+
+    result = []
+
+    for i in range(frames):
+        # Reveal more pixels each frame
+        reveal_amount = (i + 1) / frames
+
+        # Random noise mask
+        noise = np.random.rand(h, w)
+
+        # Reveal where noise < reveal_amount
+        mask = np.maximum(mask, (noise < reveal_amount).astype(np.float32))
+
+        # Apply mask
+        frame = (base * mask[..., None]).astype(np.uint8)
+        result.append(Image.fromarray(frame, "RGBA"))
+
+    return result
 
 def zoom_out_frames(base_img, frames):
     w, h = base_img.size
@@ -144,6 +200,11 @@ EFFECT_FUNCS = {
     "Fade Out": fade_out_frames,
     "Zoom In": zoom_in_frames,
     "Zoom Out": zoom_out_frames,
+    "Sand In": sand_in_frames,
+    "Stretch From Bottom": lambda img, f: stretch_from_direction(img, f, "bottom"),
+    "Stretch From Top": lambda img, f: stretch_from_direction(img, f, "top"),
+    "Stretch From Left": lambda img, f: stretch_from_direction(img, f, "left"),
+    "Stretch From Right": lambda img, f: stretch_from_direction(img, f, "right"),
 }
 
 
