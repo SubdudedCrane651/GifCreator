@@ -937,6 +937,9 @@ class GifCreatorTk:
         win.title("Large Preview")
         win.geometry("1000x600")
 
+                # Set icon
+        #win.iconbitmap("gif_icon.ico")
+
         label = tk.Label(win, bg="black")
         label.pack(fill="both", expand=True)
 
@@ -1045,6 +1048,9 @@ class GifCreatorTk:
 if __name__ == "__main__":
     root = tk.Tk()
     root.title("GIF Creator (Scrollable)")
+
+    # Set icon
+    root.iconbitmap("gif_icon.ico")
 
     scroll = ScrollableFrame(root)
     scroll.pack(fill="both", expand=True)
