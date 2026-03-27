@@ -38,6 +38,7 @@ DisableProgramGroupPage=yes
 OutputBaseFilename=GIFCreator_app_setup
 SolidCompression=yes
 WizardStyle=modern
+UsePreviousAppDir=no
 
 [Setup]
 SetupIconFile=F:\Python\GIFCreator\gif_icon.ico
