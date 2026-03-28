@@ -1048,6 +1048,12 @@ class GifCreatorTk:
 if __name__ == "__main__":
     root = tk.Tk()
     root.title("GIF Creator (Scrollable)")
+    root.attributes("-fullscreen", True)
+
+    # Exit full screen button
+    btn = tk.Button(root, text="Exit Full Screen",
+                    command=lambda: root.attributes("-fullscreen", False))
+    btn.pack(pady=20)
 
     # Set icon
     root.iconbitmap("gif_icon.ico")
