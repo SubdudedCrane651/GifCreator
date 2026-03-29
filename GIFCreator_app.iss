@@ -43,6 +43,11 @@ UsePreviousAppDir=no
 [Setup]
 SetupIconFile=F:\Python\GIFCreator\gif_icon.ico
 
+[Icons]
+; Desktop shortcut
+Name: "{commondesktop}\GifCompressor - Shortcut"; Filename: "{app}\GifCompressor.exe"
+
+
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
