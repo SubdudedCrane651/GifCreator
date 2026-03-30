@@ -1058,6 +1058,10 @@ if __name__ == "__main__":
     # Set icon
     root.iconbitmap("gif_icon.ico")
 
+    # Make this icon the default for ALL future windows
+    root.tk.call('wm', 'iconphoto', root._w, tk.PhotoImage(file="gif_icon.png"))
+
+
     scroll = ScrollableFrame(root)
     scroll.pack(fill="both", expand=True)
 
