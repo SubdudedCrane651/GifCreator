@@ -5,6 +5,8 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, colorchooser, font
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 import numpy as np
+from moviepy import VideoFileClip
+from tkinter import filedialog, messagebox
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(SCRIPT_DIR, "output_frames")
@@ -90,6 +92,32 @@ def get_font_path(font_name):
             return path
 
     return None
+
+def convert_gif_to_mp4(gif_path, output_path=None):
+    try:
+        clip = VideoFileClip(gif_path)
+
+        # If no output path is provided, auto-generate one
+        if output_path is None:
+            if gif_path.lower().endswith(".gif"):
+                output_path = gif_path[:-4] + ".mp4"
+            else:
+                output_path = gif_path + ".mp4"
+
+        # Convert to MP4 (H.264)
+        clip.write_videofile(
+            output_path,
+            codec="libx264",
+            audio=False,
+            fps=clip.fps
+        )
+
+        clip.close()
+        return output_path
+
+    except Exception as e:
+        print("Error converting GIF:", e)
+        return None    
 
 
 # ---------- Animation helpers (image-only transforms) ---------- #
@@ -531,6 +559,7 @@ class GifCreatorTk:
         tk.Button(bottom, text="Save Project", command=self.save_project).grid(row=1, column=0, padx=5)
         tk.Button(bottom, text="Load Project", command=self.load_project).grid(row=1, column=1, padx=5)
         tk.Button(bottom, text="Export Still Image", command=self.export_still_image).grid(row=0, column=2, padx=5)
+        tk.Button(bottom, text="Convert GIF to MP4", command=self.convert_gif_dialog).grid(row=1, column=2, padx=5)
 
     # ---------- WYSIWYG ---------- #
 
@@ -994,6 +1023,24 @@ class GifCreatorTk:
         with open(path, "w") as f:
             json.dump(data, f, indent=4)
         messagebox.showinfo("Saved", f"Project saved to {path}")
+
+
+
+    def convert_gif_dialog(self):
+        gif_path = filedialog.askopenfilename(
+            title="Select GIF to Convert",
+            filetypes=[("GIF Files", "*.gif")]
+        )
+
+        if not gif_path:
+            return
+
+        output = convert_gif_to_mp4(gif_path)
+
+        if output:
+            messagebox.showinfo("Success", f"MP4 saved as:\n{output}")
+        else:
+            messagebox.showerror("Error", "Failed to convert GIF.")        
 
     def load_project(self):
         path = filedialog.askopenfilename(filetypes=[("JSON", "*.json"), ("All Files", "*.*")])
