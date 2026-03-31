@@ -1,6 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-import os
 from PyInstaller.utils.hooks import copy_metadata
 
 # --- Include metadata for moviepy + imageio ---
@@ -8,7 +7,7 @@ datas = []
 datas += copy_metadata('moviepy')
 datas += copy_metadata('imageio')
 
-# --- Bundle ffmpeg.exe ---
+# --- Bundle ffmpeg.exe (must be in same folder as this spec) ---
 binaries = [
     ('ffmpeg.exe', 'ffmpeg.exe')
 ]
@@ -49,21 +48,7 @@ exe = EXE(
     name='GifCreator',
     debug=False,
     strip=False,
-<<<<<<< HEAD
     upx=False,
     console=False,          # GUI mode
-    icon='gif_icon.ico',   # replace with your icon file
+    icon='gif_icon.ico',   # replace with your icon
 )
-=======
-    upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
-    console=False,
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-    icon=['gif_icon.ico'],
-)
->>>>>>> 8a87fb8919529a9e3611714e5d9fadc3bada9388
