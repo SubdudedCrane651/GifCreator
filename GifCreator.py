@@ -8,6 +8,17 @@ import numpy as np
 from moviepy import VideoFileClip
 from tkinter import filedialog, messagebox
 
+import os, sys
+import moviepy.config as mpconfig
+
+if getattr(sys, 'frozen', False):
+    # Running inside PyInstaller EXE
+    ffmpeg_path = os.path.join(sys._MEIPASS, "ffmpeg.exe")
+    mpconfig.FFMPEG_BINARY = ffmpeg_path
+else:
+    # Running normally
+    mpconfig.FFMPEG_BINARY = "ffmpeg"
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(SCRIPT_DIR, "output_frames")
 
