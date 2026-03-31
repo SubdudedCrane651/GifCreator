@@ -104,6 +104,12 @@ def get_font_path(font_name):
 
     return None
 
+from proglog import ProgressBarLogger
+
+class SilentLogger(ProgressBarLogger):
+    def callback(self, **changes):
+        pass
+
 def convert_gif_to_mp4(gif_path, output_path=None):
     try:
         clip = VideoFileClip(gif_path)
@@ -115,12 +121,12 @@ def convert_gif_to_mp4(gif_path, output_path=None):
             else:
                 output_path = gif_path + ".mp4"
 
-        # Convert to MP4 (H.264)
         clip.write_videofile(
             output_path,
             codec="libx264",
             audio=False,
-            fps=clip.fps
+            fps=clip.fps,
+            logger=SilentLogger()   # <-- FIX
         )
 
         clip.close()
@@ -128,7 +134,7 @@ def convert_gif_to_mp4(gif_path, output_path=None):
 
     except Exception as e:
         print("Error converting GIF:", e)
-        return None    
+        return None
 
 
 # ---------- Animation helpers (image-only transforms) ---------- #
