@@ -1,4 +1,8 @@
 tkinter
+<<<<<<< HEAD
 imageio
+=======
+pillow
+>>>>>>> 8a87fb8919529a9e3611714e5d9fadc3bada9388
 requests
 moviepy
