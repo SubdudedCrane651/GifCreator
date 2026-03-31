@@ -58,7 +58,6 @@ SetupIconFile=F:\Python\GIFCreator\gif_icon.ico
 Name: "{commondesktop}\GifCompressor - Shortcut"; Filename: "{app}\GifCompressor.exe"
 Name: "{commondesktop}\GifCreatorApp"; Filename: "{app}\GifCreator.exe";
 
-
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
@@ -80,7 +79,6 @@ Root: HKA; Subkey: "Software\Classes\{#MyAppAssocKey}\shell\open\command"; Value
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Dirs]
 Name: "{app}\cache"; Flags: uninsalwaysuninstall
