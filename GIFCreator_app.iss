@@ -40,12 +40,23 @@ SolidCompression=yes
 WizardStyle=modern
 UsePreviousAppDir=no
 
+[Code]
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssInstall then
+  begin
+    MsgBox('Hey sweetheart! Dad made this tool just for you ❤️', 
+           mbInformation, MB_OK);
+  end;
+end;
+
 [Setup]
 SetupIconFile=F:\Python\GIFCreator\gif_icon.ico
 
 [Icons]
 ; Desktop shortcut
 Name: "{commondesktop}\GifCompressor - Shortcut"; Filename: "{app}\GifCompressor.exe"
+Name: "{commondesktop}\GifCreatorApp"; Filename: "{app}\GifCreator.exe";
 
 
 [Languages]
