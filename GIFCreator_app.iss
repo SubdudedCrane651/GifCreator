@@ -58,6 +58,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Source: "F:\Python\GIFCreator\dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "F:\Python\GIFCreator\dist\GIFCompressor.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "F:\Python\GIFCreator\gif_icon.ico"; DestDir: "{app}"
+Source: "F:\Python\GIFCreator\gif_icon.png"; DestDir: "{app}"
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Registry]

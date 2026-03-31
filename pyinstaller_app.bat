@@ -1,1 +1,1 @@
-pyinstaller --icon=gif_icon.ico --onefile --console GifCreator.py
+pyinstaller GifCreator.spec
