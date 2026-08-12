@@ -31,7 +31,7 @@ async def load_file(e):
 
     img = Image.open(file_path)
 
-    # GIF handling (bulletproof)
+    # GIF handling
     if img.format == "GIF":
         frames = []
         durations = []
@@ -45,27 +45,36 @@ async def load_file(e):
         preview_image = frames[0]
 
     else:
-        frames = []
-        durations = []
+        # PNG/JPG/etc → treat as 1-frame GIF
         preview_image = img.convert("RGBA")
+        frames = [preview_image]
+        durations = [100]
+        preview_index = 0
 
     update_preview()
 
-def update_preview():
-    preview.clear()
+# Create preview image element once
+# Create preview image element once
+preview_image_element = ui.image().style("width:300px; border-radius:10px;")
 
-    # HARD GUARD AGAINST BYTES
-    if not isinstance(preview_image, Image.Image):
-        with preview:
-            ui.label("Preview image corrupted (bytes instead of PIL Image)").classes("text-red-500 text-xl")
-        return
+preview = ui.column().classes("items-center justify-center")
+with preview:
+    preview_image_element = ui.image().style("width:300px; border-radius:10px;")
+
+import base64
+
+def update_preview():
+    print("UPDATE PREVIEW CALLED")
 
     buffer = io.BytesIO()
     preview_image.save(buffer, format="PNG")
-    data = buffer.getvalue()
 
-    with preview:
-        ui.image(data).style("width:300px; border-radius:10px;")
+    # Convert to base64 string
+    encoded = base64.b64encode(buffer.getvalue()).decode('utf-8')
+
+    # Send a data URL string (NOT bytes)
+    preview_image_element.set_source(f"data:image/png;base64,{encoded}")
+
 
 def next_frame():
     global preview_index, preview_image
@@ -82,28 +91,28 @@ def prev_frame():
         update_preview()
 
 def apply_text():
-    global preview_image
+    global preview_image, frames, preview_index
 
-    if preview_image is None:
-        ui.notify("No image loaded")
-        return
+    # Draw directly on the frame
+    frame = frames[preview_index]
+    draw = ImageDraw.Draw(frame)
 
-    draw = ImageDraw.Draw(preview_image)
-
-    # FINAL FIX: use Pillow's safe built-in font
     font = ImageFont.load_default()
+    w, h = frame.size
 
-    w, h = preview_image.size
     draw.text((w//2, h//2), text_input.value, fill="white", anchor="mm", font=font)
 
+    # Update preview_image to match the modified frame
+    preview_image = frame
+
     update_preview()
-    
+
 def to_gif_frame(img):
     return img.convert("RGBA").convert("P", palette=Image.ADAPTIVE)
     
 def export_gif():
     if not frames:
-        ui.notify("Load a GIF first")
+        ui.notify("No frames to export")
         return
 
     speed = speed_slider.value
@@ -111,14 +120,20 @@ def export_gif():
 
     export_path = "edited.gif"
 
-    gif_frames = [to_gif_frame(f) for f in frames]
+    gif_frames = []
+    for f in frames:
+        rgba = f.convert("RGBA")
+        pal = rgba.convert("P", palette=Image.ADAPTIVE)
+        gif_frames.append(pal)
 
     gif_frames[0].save(
         export_path,
         save_all=True,
         append_images=gif_frames[1:],
         duration=new_durations,
-        loop=0
+        loop=0,
+        optimize=False,
+        disposal=2
     )
 
     ui.notify(f"Exported as {export_path}")
@@ -127,8 +142,6 @@ def export_gif():
 ui.label("NiceGUI GIF Editor").classes("text-2xl text-white")
 
 ui.upload(on_upload=load_file)
-
-preview = ui.column().classes("items-center justify-center")
 
 with ui.row():
     ui.button("Prev", on_click=prev_frame)
