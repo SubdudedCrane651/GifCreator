@@ -68,13 +68,12 @@ def update_preview():
 
     buffer = io.BytesIO()
     preview_image.save(buffer, format="PNG")
-
-    # Convert to base64 string
     encoded = base64.b64encode(buffer.getvalue()).decode('utf-8')
 
-    # Send a data URL string (NOT bytes)
-    preview_image_element.set_source(f"data:image/png;base64,{encoded}")
-
+    preview.clear()
+    with preview:
+        ui.image(f"data:image/png;base64,{encoded}") \
+            .style("width:300px; border-radius:10px;")
 
 def next_frame():
     global preview_index, preview_image
@@ -93,17 +92,17 @@ def prev_frame():
 def apply_text():
     global preview_image, frames, preview_index
 
-    # Draw directly on the frame
-    frame = frames[preview_index]
-    draw = ImageDraw.Draw(frame)
+    print("=== APPLY TEXT FIRED ===")
 
-    font = ImageFont.load_default()
-    w, h = frame.size
+    # ALWAYS draw on preview_image
+    draw = ImageDraw.Draw(preview_image)
 
-    draw.text((w//2, h//2), text_input.value, fill="white", anchor="mm", font=font)
+    # Guaranteed visible test
+    draw.rectangle((10, 10, 300, 100), fill="black")
+    draw.text((20, 20), text_input.value, fill="yellow")
 
-    # Update preview_image to match the modified frame
-    preview_image = frame
+    # Save back into frames
+    frames[preview_index] = preview_image.copy()
 
     update_preview()
 
