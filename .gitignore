@@ -4,3 +4,5 @@ Output/
 ,venv/
 *.exe
 *.dll
+uploads/
+*.gif
