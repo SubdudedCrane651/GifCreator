@@ -2,17 +2,28 @@ import os
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from PIL import Image, ImageSequence
-
+from PIL import ImageDraw, ImageFont
 
 MAX_SIZE_MB = 22
 MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024
-
 
 class GifCompressor:
     def __init__(self, root):
         self.root = root
         self.root.title("GIF Compressor (Max 22 MB)")
         self.root.geometry("400x250")
+        
+        self.watermark_enabled = tk.BooleanVar(value=False)
+
+        tk.Checkbutton(
+            root,
+            text="Add Watermark",
+            variable=self.watermark_enabled
+        ).pack()
+
+        tk.Label(root, text="Watermark Text:").pack()
+        self.watermark_text = tk.StringVar(value="Harmonie Models")
+        tk.Entry(root, textvariable=self.watermark_text, width=25).pack()
 
         self.gif_path = None
 
@@ -30,6 +41,50 @@ class GifCompressor:
 
         self.status = tk.Label(root, text="", fg="blue")
         self.status.pack()
+        
+    def add_watermark(self, frame):
+        if not self.watermark_enabled.get():
+            return frame
+
+        frame = frame.convert("RGBA")
+
+        draw = ImageDraw.Draw(frame)
+
+        try:
+            font = ImageFont.truetype("arial.ttf", 24)
+        except:
+            font = ImageFont.load_default()
+
+        text = self.watermark_text.get()
+        
+        print(f"Adding watermark: '{text}' to frame of size {frame.size}")
+
+        bbox = draw.textbbox((0, 0), text, font=font)
+        text_w = bbox[2] - bbox[0]
+        text_h = bbox[3] - bbox[1]
+
+        margin = 10
+
+        x = frame.width - text_w - margin
+        y = frame.height - text_h - margin
+
+        # Shadow
+        draw.text(
+            (x + 2, y + 2),
+            text,
+            font=font,
+            fill=(0, 0, 0, 128)
+        )
+
+        # Main text
+        draw.text(
+            (x, y),
+            text,
+            font=font,
+            fill=(255, 255, 255, 180)
+        )
+
+        return frame
 
     def load_gif(self):
         path = filedialog.askopenfilename(filetypes=[("GIF Files", "*.gif")])
@@ -69,6 +124,10 @@ class GifCompressor:
                 new_w = int(w * (resize_percent / 100))
                 new_h = int(h * (resize_percent / 100))
                 frame = frame.resize((new_w, new_h), Image.LANCZOS)
+
+            # Reduce colors
+            # Add watermark
+            frame = self.add_watermark(frame)
 
             # Reduce colors
             frame = frame.convert("P", palette=Image.ADAPTIVE, colors=max_colors)
