@@ -11,20 +11,27 @@ class GifCompressor:
     def __init__(self, root):
         self.root = root
         self.root.title("GIF Compressor (Max 22 MB)")
-        self.root.geometry("400x250")
+        self.root.geometry("400x400")
         
-        self.watermark_enabled = tk.BooleanVar(value=False)
+        self.watermark_type = tk.StringVar(value="none")
+        self.watermark_file = None
+        
+        tk.Label(root, text="Watermark").pack()
 
-        tk.Checkbutton(
-            root,
-            text="Add Watermark",
-            variable=self.watermark_enabled
-        ).pack()
+        tk.Radiobutton(root, text="None", variable=self.watermark_type,
+                    value="none").pack(anchor="w")
 
-        tk.Label(root, text="Watermark Text:").pack()
+        tk.Radiobutton(root, text="Text", variable=self.watermark_type,
+                    value="text").pack(anchor="w")
+
+        tk.Radiobutton(root, text="Image", variable=self.watermark_type,
+                    value="image").pack(anchor="w")
+
         self.watermark_text = tk.StringVar(value="Harmonie Models")
-        tk.Entry(root, textvariable=self.watermark_text, width=25).pack()
+        tk.Entry(root, textvariable=self.watermark_text).pack()
 
+        tk.Button(root, text="Select Logo",
+                command=self.select_watermark_image).pack()
         self.gif_path = None
 
         tk.Button(root, text="Load GIF", command=self.load_gif, width=20).pack(pady=10)
@@ -41,6 +48,93 @@ class GifCompressor:
 
         self.status = tk.Label(root, text="", fg="blue")
         self.status.pack()
+
+    def apply_watermark(self, frame):
+        """
+        Applies either:
+        - no watermark
+        - text watermark
+        - image watermark
+
+        Returns RGBA image.
+        """
+
+        mode = self.watermark_type.get()
+
+        if mode == "none":
+            return frame
+
+        frame = frame.convert("RGBA")
+
+        margin = 10
+
+        if mode == "text":
+
+            draw = ImageDraw.Draw(frame)
+
+            try:
+                font = ImageFont.truetype("arial.ttf", 24)
+            except:
+                font = ImageFont.load_default()
+
+            text = self.watermark_text.get()
+
+            bbox = draw.textbbox((0, 0), text, font=font)
+
+            text_w = bbox[2] - bbox[0]
+            text_h = bbox[3] - bbox[1]
+
+            x = frame.width - text_w - margin
+            y = frame.height - text_h - margin
+
+            # shadow
+            draw.text(
+                (x + 2, y + 2),
+                text,
+                font=font,
+                fill=(0, 0, 0, 150)
+            )
+
+            # text
+            draw.text(
+                (x, y),
+                text,
+                font=font,
+                fill=(255, 255, 255, 180)
+            )
+
+        elif mode == "image" and self.watermark_file:
+
+            logo = Image.open(self.watermark_file).convert("RGBA")
+
+            # Logo width = 15% of frame width
+            logo_width = int(frame.width * 0.15)
+
+            logo_height = int(
+                logo.height * logo_width / logo.width
+            )
+
+            logo = logo.resize(
+                (logo_width, logo_height),
+                Image.LANCZOS
+            )
+
+            # Reduce opacity to 70%
+            alpha = logo.getchannel("A")
+            alpha = alpha.point(lambda p: int(p * 0.7))
+            logo.putalpha(alpha)
+
+            x = frame.width - logo_width - margin
+            y = frame.height - logo_height - margin
+
+            frame.alpha_composite(logo, (x, y))
+
+        return frame        
+        
+    def select_watermark_image(self):
+        self.watermark_file = filedialog.askopenfilename(
+            filetypes=[("PNG Files", "*.png")]
+        )      
         
     def add_watermark(self, frame):
         if not self.watermark_enabled.get():
@@ -126,11 +220,15 @@ class GifCompressor:
                 frame = frame.resize((new_w, new_h), Image.LANCZOS)
 
             # Reduce colors
-            # Add watermark
-            frame = self.add_watermark(frame)
+            # Watermark
+            frame = self.apply_watermark(frame)
 
             # Reduce colors
-            frame = frame.convert("P", palette=Image.ADAPTIVE, colors=max_colors)
+            frame = frame.convert(
+                "P",
+                palette=Image.ADAPTIVE,
+                colors=max_colors
+            )
 
             frames.append(frame)
 
